@@ -9,16 +9,8 @@ from app.models.genre import Genre
 from app.models.rating import MovieRating
 
 
-def search_movies(
-    db: Session,
-    q: Optional[str],
-    director: Optional[str],
-    genre: Optional[str],
-    year_from: Optional[int],
-    year_to: Optional[int],
-    offset: int,
-    limit: int,
-):
+def _base_query(db: Session):
+    """Base query: Movie + Director + aggregated rating stats."""
     agg = (
         db.query(
             MovieRating.movie_id.label("movie_id"),
@@ -29,29 +21,51 @@ def search_movies(
         .subquery()
     )
 
-    query = (
+    return (
         db.query(Movie, Director, agg.c.avg_score, agg.c.cnt)
         .join(Director, Movie.director_id == Director.id)
         .outerjoin(agg, agg.c.movie_id == Movie.id)
     )
 
+
+def _apply_filters(
+    query,
+    q: Optional[str],
+    director: Optional[str],
+    genre: Optional[str],
+    year_from: Optional[int],
+    year_to: Optional[int],
+):
     if q:
         query = query.filter(Movie.title.ilike(f"%{q}%"))
-
     if director:
         query = query.filter(Director.name.ilike(f"%{director}%"))
-
     if year_from is not None:
         query = query.filter(Movie.release_year >= year_from)
-
     if year_to is not None:
         query = query.filter(Movie.release_year <= year_to)
-
     if genre:
-        query = query.join(Movie.genres).filter(Genre.name.ilike(f"%{genre}%")).distinct()
+        # This join can duplicate rows; use distinct downstream where needed
+        query = query.join(Movie.genres).filter(Genre.name.ilike(f"%{genre}%"))
+    return query
+
+
+def search_movies(
+    db: Session,
+    q: Optional[str],
+    director: Optional[str],
+    genre: Optional[str],
+    year_from: Optional[int],
+    year_to: Optional[int],
+    offset: int,
+    limit: int,
+):
+    query = _base_query(db)
+    query = _apply_filters(query, q=q, director=director, genre=genre, year_from=year_from, year_to=year_to)
 
     rows = (
-        query.order_by(Movie.id.asc())
+        query.distinct(Movie.id)
+        .order_by(Movie.id.asc())
         .offset(offset)
         .limit(limit)
         .all()
@@ -62,3 +76,16 @@ def search_movies(
         genre_names = [g.name for g in movie.genres]
         result.append((movie, director_obj, avg_score, cnt, genre_names))
     return result
+
+
+def count_search_movies(
+    db: Session,
+    q: Optional[str],
+    director: Optional[str],
+    genre: Optional[str],
+    year_from: Optional[int],
+    year_to: Optional[int],
+) -> int:
+    query = _base_query(db)
+    query = _apply_filters(query, q=q, director=director, genre=genre, year_from=year_from, year_to=year_to)
+    return int(query.with_entities(func.count(func.distinct(Movie.id))).scalar() or 0)

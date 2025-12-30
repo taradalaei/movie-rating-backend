@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
@@ -33,38 +33,45 @@ def failure(code: int, message: str, status_code: int):
     )
 
 
-@router.get("/search", response_model=SuccessResponse)
-def search_movies_endpoint(
-    q: Optional[str] = Query(default=None),
-    director: Optional[str] = Query(default=None),
-    genre: Optional[str] = Query(default=None),
-    year_from: Optional[int] = Query(default=None, ge=1800),
-    year_to: Optional[int] = Query(default=None, ge=1800),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=100),
-    db: Session = Depends(get_db),
-):
-    items = search_movies_paginated(
-        db=db,
-        q=q,
-        director=director,
-        genre=genre,
-        year_from=year_from,
-        year_to=year_to,
-        page=page,
-        page_size=page_size,
-    )
-    return {"status": "success", "data": {"items": items}}
-
 
 @router.get("", response_model=SuccessResponse)
 def list_movies_endpoint(
+    title: Optional[str] = Query(default=None),
+    release_year: Optional[int] = Query(default=None, ge=1800),
+    genre: Optional[str] = Query(default=None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    items = get_movies_paginated(db, page=page, page_size=page_size)
-    return {"status": "success", "data": {"items": items}}
+    if release_year is not None and (release_year < 1888 or release_year > 2100):
+        raise HTTPException(status_code=422, detail="Invalid release_year")
+
+    if title is None and release_year is None and genre is None:
+        items, total_items = get_movies_paginated(db, page=page, page_size=page_size)
+    else:
+        year_from = release_year
+        year_to = release_year
+        items, total_items = search_movies_paginated(
+            db=db,
+            q=title,
+            director=None,
+            genre=genre,
+            year_from=year_from,
+            year_to=year_to,
+            page=page,
+            page_size=page_size,
+        )
+
+    return {
+        "status": "success",
+        "data": {
+            "page": page,
+            "page_size": page_size,
+            "total_items": total_items,
+            "total_pages": (total_items + page_size - 1) // page_size if page_size else 0,
+            "items": items,
+        },
+    }
 
 
 @router.get("/{movie_id}", response_model=SuccessResponse)
@@ -74,7 +81,7 @@ def get_movie_detail_endpoint(
 ):
     movie = get_movie_by_id(db, movie_id)
     if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
+        return failure(404, "Movie not found", 404)
     return {"status": "success", "data": movie}
 
 
@@ -86,7 +93,7 @@ def create_movie_rating_endpoint(
 ):
     result = add_movie_rating(db, movie_id=movie_id, score=payload.score)
     if not result:
-        raise HTTPException(status_code=404, detail="Movie not found")
+        return failure(404, "Movie not found", 404)
 
     return {"status": "success", "data": result}
 
