@@ -31,3 +31,8 @@ def list_movies(db: Session, offset: int, limit: int):
         genre_names = [g.name for g in movie.genres]
         result.append((movie, director, avg_score, cnt, genre_names))
     return result
+
+
+
+def count_movies(db: Session) -> int:
+    return int(db.query(func.count(Movie.id)).scalar() or 0)

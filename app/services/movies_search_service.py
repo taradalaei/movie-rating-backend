@@ -1,7 +1,7 @@
 from typing import Optional
 from sqlalchemy.orm import Session
 
-from app.repositories.movies_search_repository import search_movies
+from app.repositories.movies_search_repository import search_movies, count_search_movies
 from app.schemas.movies import MovieListItem, DirectorMini
 
 
@@ -15,6 +15,7 @@ def search_movies_paginated(
     page: int,
     page_size: int,
 ):
+    """Return (items, total_items) for pagination metadata."""
     if page < 1:
         page = 1
     if page_size < 1:
@@ -22,6 +23,9 @@ def search_movies_paginated(
 
     offset = (page - 1) * page_size
 
+    total_items = count_search_movies(
+        db=db, q=q, director=director, genre=genre, year_from=year_from, year_to=year_to
+    )
     rows = search_movies(
         db=db,
         q=q,
@@ -47,4 +51,4 @@ def search_movies_paginated(
                 ratings_count=int(cnt) if cnt is not None else 0,
             )
         )
-    return items
+    return items, total_items
