@@ -1,24 +1,23 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+import logging
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.db.deps import get_db
 from app.schemas.common import SuccessResponse
-
+from app.schemas.movie_write import MovieCreate, MovieUpdate
 from app.schemas.ratings import RatingCreate
-from app.services.ratings_service import add_movie_rating
-
+from app.services.movie_detail_service import get_movie_by_id
 from app.services.movies_read_service import get_movies_paginated
 from app.services.movies_search_service import search_movies_paginated
-from app.services.movie_detail_service import get_movie_by_id
-from fastapi.responses import JSONResponse
-from app.schemas.movie_write import MovieCreate, MovieUpdate
-from app.services.movies_write_service import (
-    create_movie_service,
-    update_movie_service,
-    delete_movie_service,
-)
+from app.services.movies_write_service import create_movie_service, update_movie_service, delete_movie_service
+from app.services.ratings_service import add_movie_rating_service
+
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/v1/movies", tags=["movies"])
@@ -37,14 +36,24 @@ def failure(code: int, message: str, status_code: int):
 @router.get("", response_model=SuccessResponse)
 def list_movies_endpoint(
     title: Optional[str] = Query(default=None),
-    release_year: Optional[int] = Query(default=None, ge=1800),
+    release_year: Optional[int] = Query(default=None),
     genre: Optional[str] = Query(default=None),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
+    logger.info(
+        "Fetching movies list (route=/api/v1/movies, page=%s, page_size=%s, title=%s, release_year=%s, genre=%s)",
+        page,
+        page_size,
+        title,
+        release_year,
+        genre,
+    )
+
     if release_year is not None and (release_year < 1888 or release_year > 2100):
-        raise HTTPException(status_code=422, detail="Invalid release_year")
+        return failure(422, "Invalid release_year", 422)
+
 
     if title is None and release_year is None and genre is None:
         items, total_items = get_movies_paginated(db, page=page, page_size=page_size)
@@ -86,13 +95,25 @@ def get_movie_detail_endpoint(
 
 
 @router.post("/{movie_id}/ratings", response_model=SuccessResponse)
-def create_movie_rating_endpoint(
-    movie_id: int,
-    payload: RatingCreate,
-    db: Session = Depends(get_db),
-):
-    result = add_movie_rating(db, movie_id=movie_id, score=payload.score)
-    if not result:
+def create_movie_rating_endpoint(movie_id: int, payload: RatingCreate, db: Session = Depends(get_db)):
+    score = payload.score
+
+    logger.info(
+        "Rating movie (movie_id=%s, rating=%s, route=/api/v1/movies/%s/ratings)",
+        movie_id,
+        score,
+        movie_id,
+    )
+
+    result = add_movie_rating_service(db, movie_id=movie_id, score=score)
+
+    if result == "invalid_score":
+        return failure(422, "Score must be an integer between 1 and 10", 422)
+
+    if result == "error":
+        return failure(500, "Internal server error", 500)
+
+    if result is None:
         return failure(404, "Movie not found", 404)
 
     return {"status": "success", "data": result}
@@ -102,7 +123,6 @@ def create_movie_rating_endpoint(
 def create_movie_endpoint(payload: MovieCreate, db: Session = Depends(get_db)):
     movie = create_movie_service(db, payload)
     if movie is None:
-        # مطابق مستند: Invalid director_id or genres => 422
         return failure(422, "Invalid director_id or genres", 422)
 
     return {"status": "success", "data": movie}

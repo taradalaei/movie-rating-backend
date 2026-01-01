@@ -12,7 +12,7 @@ def _to_movie_item(movie):
         cast=getattr(movie, "cast", None),
         director=DirectorMini(id=movie.director.id, name=movie.director.name),
         genres=[g.name for g in movie.genres],
-        average_rating=None,   # برای write endpoints لازم نیست اینجا حساب کنیم
+        average_rating=None,
         ratings_count=0,
     )
 
