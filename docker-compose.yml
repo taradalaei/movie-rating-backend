@@ -1,15 +1,32 @@
-version: "3.9"
 services:
   db:
     image: postgres:16
     container_name: movie_rating_db
     environment:
+      POSTGRES_DB: movie_rating_db
       POSTGRES_USER: movie_user
       POSTGRES_PASSWORD: movie_pass
-      POSTGRES_DB: movie_rating_db
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: movie_rating_app
+    environment:
+      # Preferred by Phase 3 guide
+      DATABASE_URL: postgresql+psycopg2://movie_user:movie_pass@db:5432/movie_rating_db
+      # Backward compatibility with existing config (if DATABASE_URL is not used somewhere)
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: movie_rating_db
+      DB_USER: movie_user
+      DB_PASSWORD: movie_pass
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+
 volumes:
   pgdata:
