@@ -3,6 +3,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.controller.movies import router as movies_router
+from app.logging_config import setup_logging
+
+setup_logging()
+
 
 app = FastAPI(title="Movie Rating System")
 

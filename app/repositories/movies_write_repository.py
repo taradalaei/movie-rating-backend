@@ -25,7 +25,6 @@ def create_movie(
     director = _get_director(db, director_id)
     genres = _get_genres_by_ids(db, genre_ids)
 
-    # Validation مطابق مستند: director_id و genre ids باید معتبر باشند
     if (director is None) or (len(genres) != len(set(genre_ids))):
         return None
 
@@ -63,7 +62,6 @@ def update_movie(
     movie.release_year = release_year
     movie.cast = cast
 
-    # Sync ژانرها (حذف/اضافه) مطابق مستند
     movie.genres = genres
 
     db.commit()
